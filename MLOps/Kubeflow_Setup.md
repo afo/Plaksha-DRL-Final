@@ -1,15 +1,34 @@
 # Setting up Kubeflow on AWS EKS
 
+**NOTE:** For this Demo I will be using `us-west-2` region for everything. Regiion is very important for this demo.
+
 ### Workspace Setup
 
-We will be using AWS Cloud9 as our workspace. To setup the Cloud9 environment:
-- Select Create environment
+We will be using AWS Cloud9 as our terminal workspace and SageMaker Jupyter Lab for Notebooks. 
+
+To setup the Cloud9 environment:
+- Login to your AWS account and Search for **Cloud9**
+- Open Cloud9 service and Select Create environment
 - Name it workspace, click Next.
-- Choose t3.small for instance type, take all default values and click Create environment
+- Choose `m5.large` for instance type, take all default values and click Create environment
 
 When it comes up, you can open the evironment and start using the terminal.
 
+To setup the SageMaker Jupyter Instance:
+- Search for SageMaker and open its page
+- On the left bar select **Notebook** and click on **Notebook Instances**
+- Click on **Create Notebook Instance**
+- Name your notebook instance
+- Choose `ml.c5d.xlarge` for instance type
+- Go down to "Git repositories" and from drop down select "Clone a public Git repository to this notebook instance only"
+- Enter the following: `https://github.com/iam-abbas/Plaksha-DRL.git`
+- Click on **Create Notebook**
+
+We will use the Notebook workspace to code our pipelines (Because UI is much more neat and its easy to understand).
+
 ### Installing required tools
+
+Now that your workspaces are setup, go back to Cloud0 environment and install following packages.
 
 ##### Kubectl
 ```bash
@@ -56,7 +75,7 @@ sudo mv -v /tmp/eksctl /usr/local/bin
 ```
 
 ##### IAM Authenticator
-```
+```bash
 curl -o aws-iam-authenticator https://amazon-eks.s3.us-west-2.amazonaws.com/1.15.10/2020-02-22/bin/linux/amd64/aws-iam-authenticator
 chmod +x aws-iam-authenticator
 sudo mv aws-iam-authenticator /usr/local/bin
@@ -103,13 +122,13 @@ aws sts get-caller-identity --query Arn | grep Master -q && echo "IAM role valid
 ### Creating EKS Cluster
 
 Lets define our environment variables that we can re use later.
-```
+```bash
 export CLUSTER_NAME=kflow-aws
-export CLUSTER_REGION=ap-south-1
+export CLUSTER_REGION=us-west-2
 ```
 
 Create EKS Cluster using eksctl
-```
+```bash
 eksctl create cluster \
 --name ${CLUSTER_NAME} \
 --version 1.20 \
@@ -125,7 +144,7 @@ eksctl create cluster \
 **NOTE:** This step may take up to 20 Minutes!
 
 Validate your cluster
-```
+```bash
 eksctl utils associate-iam-oidc-provider --cluster ${CLUSTER_NAME} \
 --region ${CLUSTER_REGION} --approve
 ```
@@ -133,7 +152,7 @@ eksctl utils associate-iam-oidc-provider --cluster ${CLUSTER_NAME} \
 ### Installing Kubeflow
 
 Download the Kubeflow packages
-```
+```bash
 export KUBEFLOW_RELEASE_VERSION=v1.5-branch
 git clone https://github.com/awslabs/kubeflow-manifests.git
 cd kubeflow-manifests
@@ -141,12 +160,12 @@ git clone --branch ${KUBEFLOW_RELEASE_VERSION} https://github.com/kubeflow/manif
 ```
 
 Install the manifests using Kustomize
-```
+```bash
 while ! kustomize build deployment/vanilla | kubectl apply -f -; do echo "Retrying to apply resources"; sleep 10; done
 ```
 
 Deploy Kubeflow locally
-```
+```bash
 kubectl port-forward svc/istio-ingressgateway -n istio-system 8080:80
 ```
 
@@ -162,5 +181,7 @@ After running the command, you can access the Kubeflow Central Dashboard by doin
 To connect to existing EKS use following command
 
 ```bash
+export CLUSTER_NAME=kflow-aws
+export CLUSTER_REGION=us-west-2
 aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${CLUSTER_REGION}
 ```

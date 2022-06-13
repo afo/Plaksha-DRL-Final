@@ -9,11 +9,12 @@ import time
 import argparse
 import os
 import re
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 
-HEIGHT = 32
-WIDTH = 32
-DEPTH = 3
-NUM_CLASSES = 10
 
 # Copy inference pre/post-processing script so that it'll be included in the model package
 os.system('mkdir /opt/ml/model/scripts')
@@ -57,9 +58,9 @@ def main(args):
     weight_decay = args.weight_decay
     optimizer    = args.optimizer
 
-    train_dataset = get_dataset(args.training + 'Iris.csv')
-    val_dataset = get_dataset(args.training + 'Iris.csv', "validation")
-    eval_dataset   = get_dataset(args.training + 'Iris.csv', "testing")
+    train_dataset = get_dataset(args.training + '/Iris.csv')
+    val_dataset = get_dataset(args.training + '/Iris.csv', "validation")
+    eval_dataset   = get_dataset(args.training + '/Iris.csv', "testing")
     
     
     # Load model
