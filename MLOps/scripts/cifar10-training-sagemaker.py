@@ -16,83 +16,36 @@ DEPTH = 3
 NUM_CLASSES = 10
 
 # Copy inference pre/post-processing script so that it'll be included in the model package
-os.system('mkdir /opt/ml/model/code')
-os.system('cp inference.py /opt/ml/model/code')
-os.system('cp requirements.txt /opt/ml/model/code')
+os.system('mkdir /opt/ml/model/scripts')
+os.system('cp inference.py /opt/ml/model/scripts')
+os.system('cp requirements.txt /opt/ml/model/scripts')
 
-def single_example_parser(serialized_example):
-    """Parses a single tf.Example into image and label tensors."""
-    # Dimensions of the images in the CIFAR-10 dataset.
-    # See http://www.cs.toronto.edu/~kriz/cifar.html for a description of the
-    # input format.
-    features = tf.io.parse_single_example(
-        serialized_example,
-        features={
-            'image': tf.io.FixedLenFeature([], tf.string),
-            'label': tf.io.FixedLenFeature([], tf.int64),
-        })
-    image = tf.decode_raw(features['image'], tf.uint8)
-    image.set_shape([DEPTH * HEIGHT * WIDTH])
+def get_dataset(filename, usecase="training"):
+    data = pd.read_csv(filename)
 
-    # Reshape from [depth * height * width] to [depth, height, width].
-    image = tf.cast(
-        tf.transpose(tf.reshape(image, [DEPTH, HEIGHT, WIDTH]), [1, 2, 0]),
-        tf.float32)
-    label = tf.cast(features['label'], tf.int32)
+    X = data.drop(['Species'], axis = 1)
+    y = data['Species']
+
+    label_encoder = LabelEncoder()
+    y = label_encoder.fit_transform(y)
+
+    scaler = StandardScaler()
+    X = scaler.fit_transform(X)
+
+    X_train, X_rem, y_train, y_rem = train_test_split(X, y, test_size = 0.2, stratify = y, random_state = 0)
     
-    image = train_preprocess_fn(image)
-    label = tf.one_hot(label, NUM_CLASSES)
+    X_val, X_test, y_val, y_test = train_test_split(X_rem, y_rem, test_size = 0.5, stratify = y_rem, random_state = 0)
     
-    return image, label
+    if usecase == "testing":
+        return [X_test, y_test]
+    
+    if usecase == "validation":
+        return [X_val, y_val]
+       
+    return [X_train, y_train]
 
-def train_preprocess_fn(image):
-
-    # Resize the image to add four extra pixels on each side.
-    image = tf.image.resize_with_crop_or_pad(image, HEIGHT + 8, WIDTH + 8)
-
-    # Randomly crop a [HEIGHT, WIDTH] section of the image.
-    image = tf.image.random_crop(image, [HEIGHT, WIDTH, DEPTH])
-
-    # Randomly flip the image horizontally.
-    image = tf.image.random_flip_left_right(image)
-    return image
-
-def get_dataset(filenames, batch_size):
-    """Read the images and labels from 'filenames'."""
-    # Repeat infinitely.
-    dataset = tf.data.TFRecordDataset(filenames).repeat().shuffle(10000)
-
-    # Parse records.
-    dataset = dataset.map(single_example_parser, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
-    # Batch it up.
-    dataset = dataset.batch(batch_size, drop_remainder=True)
-    return dataset
-
-def get_model(model_type, input_shape, learning_rate, weight_decay, optimizer, momentum):
-    input_tensor = Input(shape=input_shape)
-    if model_type == 'resnet':
-        base_model = keras.applications.resnet50.ResNet50(include_top=False,
-                                                          weights='imagenet',
-                                                          input_tensor=input_tensor,
-                                                          input_shape=input_shape,
-                                                          classes=None)
-        x = Flatten()(base_model.output)
-        predictions = Dense(NUM_CLASSES, activation='softmax')(x)
-        model = Model(inputs=base_model.input, outputs=predictions)
-
-    elif model_type == 'vgg':
-        base_model = keras.applications.vgg19.VGG19(include_top=False,
-                                                          weights=None,
-                                                          input_tensor=input_tensor,
-                                                          input_shape=input_shape,
-                                                          classes=None)
-        x = Flatten()(base_model.output)
-        predictions = Dense(NUM_CLASSES, activation='softmax')(x)
-        model = Model(inputs=base_model.input, outputs=predictions)
-
-    else:
-        model = get_custom_model(input_shape, learning_rate, weight_decay, optimizer, momentum)
+def get_model(learning_rate, weight_decay, optimizer, momentum):
+    model = get_custom_model(learning_rate, weight_decay, optimizer, momentum)
         
     return model
 
@@ -100,25 +53,17 @@ def main(args):
     # Hyper-parameters
     epochs       = args.epochs
     lr           = args.learning_rate
-    batch_size   = args.batch_size
     momentum     = args.momentum
     weight_decay = args.weight_decay
     optimizer    = args.optimizer
-    model_type   = args.model_type
 
-    # SageMaker options
-    training_dir   = args.training
-    validation_dir = args.validation
-    eval_dir       = args.eval
-
-    train_dataset = get_dataset(training_dir+'/train.tfrecords',  batch_size)
-    val_dataset   = get_dataset(validation_dir+'/validation.tfrecords', batch_size)
-    eval_dataset  = get_dataset(eval_dir+'/eval.tfrecords', batch_size)
+    train_dataset = get_dataset(args.training + 'Iris.csv')
+    val_dataset = get_dataset(args.training + 'Iris.csv', "validation")
+    eval_dataset   = get_dataset(args.training + 'Iris.csv', "testing")
     
-    input_shape = (HEIGHT, WIDTH, DEPTH)
     
     # Load model
-    model = get_model(model_type, input_shape, lr, weight_decay, optimizer, momentum)
+    model = get_model(lr, weight_decay, optimizer, momentum)
             
     # Optimizer
     if optimizer.lower() == 'sgd':
@@ -132,13 +77,13 @@ def main(args):
                   metrics=['accuracy'])
     
     # Train model
-    history = model.fit(train_dataset, steps_per_epoch=40000 // batch_size,
-                        validation_data=val_dataset, 
-                        validation_steps=10000 // batch_size,
+    history = model.fit(train_dataset[0],
+                        train_dataset[1],
+                        validation_data=(val_dataset[0], val_dataset[1]), 
                         epochs=epochs)
     
     # Evaluate model performance
-    score = model.evaluate(eval_dataset, steps=10000 // batch_size, verbose=1)
+    score = model.evaluate(eval_dataset[0], eval_dataset[1], verbose=1)
     print('Test loss    :', score[0])
     print('Test accuracy:', score[1])
     
@@ -151,11 +96,10 @@ if __name__ == "__main__":
     # Hyper-parameters
     parser.add_argument('--epochs',        type=int,   default=10)
     parser.add_argument('--learning-rate', type=float, default=0.01)
-    parser.add_argument('--batch-size',    type=int,   default=128)
     parser.add_argument('--weight-decay',  type=float, default=2e-4)
     parser.add_argument('--momentum',      type=float, default='0.9')
     parser.add_argument('--optimizer',     type=str,   default='sgd')
-    parser.add_argument('--model-type',    type=str,   default='resnet')
+
 
     # SageMaker parameters
     parser.add_argument('--model_dir',        type=str,   default=os.environ['SM_MODEL_DIR'])
