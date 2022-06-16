@@ -161,7 +161,7 @@ git clone --branch ${KUBEFLOW_RELEASE_VERSION} https://github.com/kubeflow/manif
 
 Install the manifests using Kustomize
 ```bash
-while ! kustomize build deployment/vanilla | kubectl apply -f -; do echo "Retrying to apply resources"; sleep 10; done
+while ! kustomize build deployments/vanilla | kubectl apply -f -; do echo "Retrying to apply resources"; sleep 10; done
 ```
 
 Deploy Kubeflow locally
