@@ -123,7 +123,7 @@ aws sts get-caller-identity --query Arn | grep Master -q && echo "IAM role valid
 
 Lets define our environment variables that we can re use later.
 ```bash
-export CLUSTER_NAME=kflow-aws
+export CLUSTER_NAME=kubefl-aws
 export CLUSTER_REGION=us-west-2
 ```
 
@@ -181,7 +181,7 @@ After running the command, you can access the Kubeflow Central Dashboard by doin
 To connect to existing EKS use following command
 
 ```bash
-export CLUSTER_NAME=kflow-aws
+export CLUSTER_NAME=kubefl-aws
 export CLUSTER_REGION=us-west-2
 aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${CLUSTER_REGION}
 ```
